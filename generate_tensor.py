@@ -59,7 +59,7 @@ def json2tensor(json_file, chessman_dic, chessman_state_id, output_folder, is_sh
                                        chessboard_chessman_id_regulated,
                                        chessboard_hand_no_regulated)
                 show_channels(tensor, is_show_tensor, True)
-                tensor_save_file = os.path.join(sub_output_folder, str(hand_no) + 'npy')
+                tensor_save_file = os.path.join(sub_output_folder, str(hand_no) + '.npy')
                 np.save(tensor_save_file, tensor)
                 add_node(label, [player_id, tensor_save_file],
                          [chessman_id, state, regular_x, regular_y,
