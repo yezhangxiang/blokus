@@ -2,6 +2,7 @@ import argparse
 import os
 import shutil
 import time
+import logging
 
 import torch
 import torch.nn as nn
@@ -12,22 +13,20 @@ import torch.utils.data
 from blokus_dataset import BlokusDataset
 import models
 
-
 model_names = sorted(name for name in models.__dict__
-    if name.islower() and not name.startswith("__")
-    and callable(models.__dict__[name]))
-
+                     if name.islower() and not name.startswith("__")
+                     and callable(models.__dict__[name]))
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('train_data', metavar='DIR',
                     help='path to training dataset')
 parser.add_argument('val_data', metavar='DIR',
                     help='path to validate dataset')
-parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet8',
+parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet32',
                     choices=model_names,
                     help='model architecture: ' +
-                        ' | '.join(model_names) +
-                        ' (default: resnet8)')
+                         ' | '.join(model_names) +
+                         ' (default: resnet8)')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
@@ -46,25 +45,23 @@ parser.add_argument('--print-freq', '-p', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
+parser.add_argument('--checkpoint', default='', type=str, metavar='PATH',
+                    help='path to checkpoint (default: none)')
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
 
-best_prec1 = 0
 
-use_cuda = torch.cuda.is_available()
-
-def main():
-    global args, best_prec1
-    args = parser.parse_args()
+def main(args):
+    best_prec1 = 0
+    use_cuda = torch.cuda.is_available()
 
     channel_index = list(range(7))
     channel_num = len(channel_index)
-    class_num = 20*20*91
+    class_num = 20 * 20 * 91
 
     # create model
     print("=> creating model '{}'".format(args.arch))
     model = models.__dict__[args.arch](channel_num, num_classes=class_num)
-
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss()
@@ -77,7 +74,7 @@ def main():
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
 
-   # optionally resume from a checkpoint
+    # optionally resume from a checkpoint
     if args.resume:
         if os.path.isfile(args.resume):
             print("=> loading checkpoint '{}'".format(args.resume))
@@ -112,13 +109,13 @@ def main():
         return
 
     for epoch in range(args.start_epoch, args.epochs):
-        adjust_learning_rate(optimizer, epoch)
+        adjust_learning_rate(optimizer, epoch, args.lr)
 
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch)
+        train(train_loader, model, criterion, optimizer, epoch, args.print_freq, use_cuda)
 
         # evaluate on validation set
-        prec1 = validate(val_loader, model, criterion)
+        prec1 = validate(val_loader, model, criterion, args.print_freq, use_cuda)
 
         # remember best prec@1 and save checkpoint
         is_best = prec1 > best_prec1
@@ -128,11 +125,11 @@ def main():
             'arch': args.arch,
             'state_dict': model.state_dict(),
             'best_prec1': best_prec1,
-            'optimizer' : optimizer.state_dict(),
+            'optimizer': optimizer.state_dict(),
         }, is_best)
 
 
-def train(train_loader, model, criterion, optimizer, epoch):
+def train(train_loader, model, criterion, optimizer, epoch, args_print_freq, use_cuda):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -172,18 +169,18 @@ def train(train_loader, model, criterion, optimizer, epoch):
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if i % args.print_freq == 0:
+        if i % args_print_freq == 0:
             print('Epoch: [{0}][{1}/{2}]\t'
                   'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                   'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
                   'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                   'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
                   'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                   epoch, i, len(train_loader), batch_time=batch_time,
-                   data_time=data_time, loss=losses, top1=top1, top5=top5))
+                epoch, i, len(train_loader), batch_time=batch_time,
+                data_time=data_time, loss=losses, top1=top1, top5=top5))
 
 
-def validate(val_loader, model, criterion):
+def validate(val_loader, model, criterion, args_print_freq, use_cuda):
     batch_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
@@ -214,14 +211,14 @@ def validate(val_loader, model, criterion):
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if i % args.print_freq == 0:
+        if i % args_print_freq == 0:
             print('Test: [{0}/{1}]\t'
                   'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                   'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                   'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
                   'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                   i, len(val_loader), batch_time=batch_time, loss=losses,
-                   top1=top1, top5=top5))
+                i, len(val_loader), batch_time=batch_time, loss=losses,
+                top1=top1, top5=top5))
 
     print(' * Prec@1 {top1.avg:.3f} Prec@5 {top5.avg:.3f}'
           .format(top1=top1, top5=top5))
@@ -237,6 +234,7 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
+
     def __init__(self):
         self.reset()
 
@@ -253,9 +251,9 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
-def adjust_learning_rate(optimizer, epoch):
+def adjust_learning_rate(optimizer, epoch, args_lr):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
-    lr = args.lr * (0.1 ** (epoch // 30))
+    lr = args_lr * (0.1 ** (epoch // 30))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
@@ -277,4 +275,5 @@ def accuracy(output, target, topk=(1,)):
 
 
 if __name__ == '__main__':
-    main()
+    args = parser.parse_args()
+    main(args)
