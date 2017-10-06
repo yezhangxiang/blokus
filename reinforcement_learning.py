@@ -290,3 +290,154 @@ class BlokusArgs(object):
     def __init__(self, train_data, val_data, retrain, gpu_id):
         self.arch = 'resnet32'
         self.criterion = 'CrossEntropy'
+        self.train_data = train_data
+        self.val_data = val_data
+        self.workers = 8
+        self.channel_index = '0:7'
+        self.epochs = 20
+        self.start_epoch = 0
+        self.batch_size = 256
+        self.lr = 0.001
+        self.schedule = [40, 90]
+        self.gamma = 0.11
+        self.momentum = 0.9
+        self.weight_decay = 1e-4
+        self.print_freq = 10
+        self.checkpoint = 'reinforcement'
+        self.resume = ''
+        self.retrain = retrain
+        self.reset_classifier = False
+        self.manualSeed = None
+        self.evaluate = False
+        self.gpu_id = gpu_id
+
+
+def pick_opp(opp_model_pool_path, except_model=None):
+    opp_list = os.listdir(opp_model_pool_path)
+    opp_list = [os.path.join(opp_model_pool_path, opp_model) for opp_model in opp_list]
+    opp_list = [os.path.join(opp_model, 'checkpoint.pth.tar') for opp_model in opp_list]
+    if except_model and except_model in opp_list:
+        opp_list.remove(except_model)
+    while True:
+        model_opp = random.choice(opp_list)
+        if os.path.isfile(model_opp):
+            break
+    return model_opp
+
+
+def write_summary(statistic_table, squareness_path_i):
+    summary_output_file = os.path.join(squareness_path_i, 'summary.csv')
+    with open(summary_output_file, 'w') as summary_output_file:
+        model_2_win_num_sum = 0
+        model_1_win_num_sum = 0
+        draw_num_sum = 0
+        model_2_win_score_average_sum = 0
+        result_num_sum = 0
+        for k_m2, v_m2 in statistic_table.items():
+            model_path_2 = k_m2
+            for k_m1, v_m1 in k_m2:
+                model_path_1 = k_m1
+                model_2_win_num = v_m1[0]
+                model_1_win_num = v_m1[1]
+                draw_num = v_m1[2]
+                model_2_win_score_average = v_m1[3]
+                result_num = v_m1[4]
+                model_2_win_num_sum += v_m1[0]
+                model_1_win_num_sum += v_m1[1]
+                draw_num_sum += v_m1[2]
+                model_2_win_score_average_sum += v_m1[3]
+                result_num_sum += v_m1[4]
+
+                model_2_win_score_average /= result_num
+                summary_output_file.write('model 1 :' + model_path_1 + '\n')
+                summary_output_file.write('model 2 :' + model_path_2 + '\n')
+                summary_output_file.write('model 1 win :' + str(model_1_win_num) + '\n')
+                summary_output_file.write('model 2 win :' + str(model_2_win_num) + '\n')
+                summary_output_file.write('draw num :' + str(draw_num) + '\n')
+                summary_output_file.write('model 2 win score average :' + str(model_2_win_score_average) + '\n')
+        model_2_win_score_average_sum /= result_num_sum
+        summary_output_file.write('model 1 win all:' + str(model_1_win_num_sum) + '\n')
+        summary_output_file.write('model 2 win all:' + str(model_2_win_num_sum) + '\n')
+        summary_output_file.write('draw num all:' + str(draw_num_sum) + '\n')
+        summary_output_file.write('model 2 win score average all:' + str(model_2_win_score_average_sum) + '\n')
+
+
+def reinforce_learning(argv):
+    opp_model_pool_path = argv[1]
+    model_path_2 = argv[2]
+    tensor_path = argv[3]
+    squareness_path = argv[4]
+    last_val_file = argv[5]
+    gpu_id = argv[6]
+
+    gpu_list = gpu_id.split(',')
+    gpu_list = [int(gpu) for gpu in gpu_list]
+
+    last_tensor_path = None
+    iter_num = 0
+    try:
+        multiprocessing.set_start_method('spawn')
+    except RuntimeError:
+        pass
+
+    while True:
+        iter_num += 1
+        tensor_path_i = os.path.join(tensor_path, str(iter_num))
+        squareness_path_i = os.path.join(squareness_path, str(iter_num))
+
+        if not os.path.isdir(squareness_path_i):
+            os.makedirs(squareness_path_i)
+        print('%s: start battle.' % (datetime.datetime.now()))
+
+        # statistic_table = battle(opp_model_pool_path, model_path_2, tensor_path_i, squareness_path_i, chess_num=10,
+        #                          gpu_id='0', prefix='test', is_show_tensor=False)
+        pool_num = 10
+        pool = multiprocessing.Pool(pool_num)
+        result_queue = multiprocessing.Manager().Queue()
+        statistic_table = {}
+        for process_i in range(pool_num):
+            sub_gpu_id = str(gpu_list[process_i % len(gpu_list)])
+            pool.apply_async(one_task, args=(result_queue, battle, opp_model_pool_path, model_path_2, tensor_path_i,
+                                             squareness_path_i, 500, sub_gpu_id, str(process_i), False,))
+        pool.close()
+        pool.join()
+        print('%s: end battle.' % (datetime.datetime.now()))
+        print('%s: start merge result.' % (datetime.datetime.now()))
+        while not result_queue.empty():
+            value = result_queue.get(True)
+            statistic_table = merge_tree(statistic_table, value)
+        print('%s: end merge result.' % (datetime.datetime.now()))
+        write_summary(statistic_table, squareness_path_i)
+
+        label_file_name = 'win_label.csv'
+        train_file = os.path.join(tensor_path_i, "train.csv")
+        val_file = os.path.join(tensor_path_i, "val.csv")
+        path_list = [tensor_path_i]
+        summary = collect_tensor_and_label(path_list, [], label_file_name)
+        with open(train_file, 'w') as cur_train_data_file, open(val_file, 'w') as cur_val_data_file:
+            cur_train_data_file.write('filename,chessman, state, x, y, class\n')
+            for line_i, line in enumerate(summary):
+                line = ','.join(line) + '\n'
+                cur_train_data_file.write(line)
+                if line_i < 20000:
+                    cur_val_data_file.write(line)
+        blokus_args = BlokusArgs(train_file, last_val_file, model_path_2, gpu_id)
+        print("train file: " + train_file)
+        print("val file: " + val_file)
+        print("retrain from " + model_path_2)
+        checkpoint_path = train(blokus_args)
+
+        new_model_path = os.path.join(checkpoint_path, 'checkpoint.pth.tar')
+        model_path_2 = new_model_path
+        last_val_file = val_file
+
+        if last_tensor_path:
+            shutil.rmtree(last_tensor_path)
+        last_tensor_path = tensor_path_i
+
+
+if __name__ == '__main__':
+    try:
+         reinforce_learning(sys.argv)
+    except:
+        traceback.print_exc()
