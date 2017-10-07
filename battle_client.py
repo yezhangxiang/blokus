@@ -141,7 +141,7 @@ def battle_via_server(argv):
                 data = data[(5 + msg_len):]
 
                 msg = json.loads(msg_string)
-            except:
+            except RuntimeError:
                 action = {
                     "msg_name": "action",
                     "msg_data": {
@@ -357,5 +357,5 @@ def search_legal_solution(chessboard_player_id, chessboard_chessman_id,
 if __name__ == '__main__':
     try:
         battle_via_server(sys.argv)
-    except:
+    except RuntimeError:
         traceback.print_exc()

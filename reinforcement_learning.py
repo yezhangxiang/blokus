@@ -31,7 +31,7 @@ def init_players():
     return players
 
 
-def battel_itself(model_offensive, model_defensive, tensor_output_folder,
+def battle_itself(model_offensive, model_defensive, tensor_output_folder,
                   squareness_output_file, is_use_cuda, is_show_tensor):
     chessman_dic = extend_all_chessman()
     chessman_state_id, chessman_state_id_inverse = get_chessman_state_index(chessman_dic)
@@ -199,7 +199,7 @@ def battel_itself(model_offensive, model_defensive, tensor_output_folder,
 def one_task(result_queue, process_one_file_func, *args):
     try:
         result_queue.put(process_one_file_func(*args))
-    except:
+    except RuntimeError:
         traceback.print_exc()
 
 
@@ -243,7 +243,7 @@ def battle(opp_model_pool_path, model_path_2, tensor_path, squareness_path, ches
         squareness_output_file = os.path.join(squareness_path, file_name + 'txt')
         if not os.path.isdir(tensor_output_folder):
             os.makedirs(tensor_output_folder)
-        teams, label = battel_itself(model_offensive, model_defensive, tensor_output_folder,
+        teams, label = battle_itself(model_offensive, model_defensive, tensor_output_folder,
                                      squareness_output_file, is_use_cuda, is_show_tensor)
         if teams is None:
             print("team is none")
@@ -438,6 +438,6 @@ def reinforce_learning(argv):
 
 if __name__ == '__main__':
     try:
-         reinforce_learning(sys.argv)
-    except:
+        reinforce_learning(sys.argv)
+    except RuntimeError:
         traceback.print_exc()
