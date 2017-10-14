@@ -43,19 +43,19 @@ def battle_itself(model_offensive, model_defensive, tensor_output_folder,
     chessboard_hand_no = np.zeros((channel_size, channel_size))
 
     all_action = []
-    game_state = {
+    game_start = {
         "msg_name": "game_start",
         "msg_data": {
             "players": [
                 {"team_id": 1, "team_name": "tt", "player_id": 1, "birthplace": {"x": 0, "y": 0}},
                 {"team_id": 0, "team_name": "cc", "player_id": 2, "birthplace": {"x": 0, "y": 19}},
-                {"team_id": 1, "team_name": "tt", "player_id": 3, "birthplace": {"x": 19, "y": 10}},
+                {"team_id": 1, "team_name": "tt", "player_id": 3, "birthplace": {"x": 19, "y": 19}},
                 {"team_id": 0, "team_name": "cc", "player_id": 4, "birthplace": {"x": 19, "y": 0}},
             ]
         },
         "time": int(time.time())
     }
-    all_action.append(json.dumps(game_state))
+    all_action.append(json.dumps(game_start))
 
     label = {}
     players = init_players()
@@ -299,7 +299,7 @@ class BlokusArgs(object):
         self.batch_size = 256
         self.lr = 0.001
         self.schedule = [40, 90]
-        self.gamma = 0.11
+        self.gamma = 0.1
         self.momentum = 0.9
         self.weight_decay = 1e-4
         self.print_freq = 10
@@ -335,7 +335,7 @@ def write_summary(statistic_table, squareness_path_i):
         result_num_sum = 0
         for k_m2, v_m2 in statistic_table.items():
             model_path_2 = k_m2
-            for k_m1, v_m1 in k_m2:
+            for k_m1, v_m1 in v_m2.items():
                 model_path_1 = k_m1
                 model_2_win_num = v_m1[0]
                 model_1_win_num = v_m1[1]
@@ -423,7 +423,7 @@ def reinforce_learning(argv):
                     cur_val_data_file.write(line)
         blokus_args = BlokusArgs(train_file, last_val_file, model_path_2, gpu_id)
         print("train file: " + train_file)
-        print("val file: " + val_file)
+        print("val file: " + last_val_file)
         print("retrain from " + model_path_2)
         checkpoint_path = train(blokus_args)
 

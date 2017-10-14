@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def matrix2tensor(chessboard_player_id, chessboard_chessman_id, chessboard_band_no):
+def matrix2tensor(chessboard_player_id, chessboard_chessman_id, chessboard_hand_no):
     channel_max_num = 10
     channel_size = 20
     tensor = np.zeros((channel_max_num, channel_size, channel_size))
@@ -23,7 +23,7 @@ def matrix2tensor(chessboard_player_id, chessboard_chessman_id, chessboard_band_
     channel_i += 1
     tensor[channel_i, :, :] = chessboard_chessman_id
     channel_i += 1
-    tensor[channel_i, :, :] = chessboard_band_no
+    tensor[channel_i, :, :] = chessboard_hand_no
     channel_i += 1
     return tensor[:channel_i, :, :]
 

@@ -150,10 +150,17 @@ def resnet8(channel_num, **kwargs):
     return model
 
 
+def resnet14(channel_num, **kwargs):
+    """Constructs a ResNet-20 model.
+    """
+    model = ResNet(channel_num, 14, **kwargs)
+    return model
+
+
 def resnet20(channel_num, **kwargs):
     """Constructs a ResNet-20 model.
     """
-    model = ResNet(channel_num, 16, **kwargs)
+    model = ResNet(channel_num, 20, **kwargs)
     return model
 
 

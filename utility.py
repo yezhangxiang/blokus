@@ -84,3 +84,15 @@ def show_channels(channels, is_show_image=False, is_show_immediately=True, is_sh
     if is_show_immediately:
         plt.show()
     return
+
+
+def index_split(index_str):
+    indexes = []
+    index_str_split = index_str.split('-')
+    for index_section in index_str_split:
+        index_section_split = index_section.split(':')
+        section = list(map(int, index_section_split))
+        if len(section) == 2:
+            section = list(range(*section))
+        indexes += section
+    return indexes

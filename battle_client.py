@@ -37,7 +37,7 @@ def play(chessman_dic, chessman_state_id_inverse, tensor, model, player_id, is_u
     channel_size = 20
     channel_num = 7
     input_tensor = torch.from_numpy(tensor[0:channel_num, :, :])
-    input_tensor = input_tensor.view(1, channel_num, 20, 20)
+    input_tensor = input_tensor.view(1, channel_num, channel_size, channel_size)
     input_all = torch.from_numpy(tensor)
 
     input_tensor = input_tensor.float()
@@ -53,7 +53,7 @@ def play(chessman_dic, chessman_state_id_inverse, tensor, model, player_id, is_u
                                                   maxk=maxk, player_id=1, random_choose_rate=random_choose_rate)
     chessman = {}
     if chessman_id:
-        squareness = get_squareness(chessman_id, state, x, y, player_id)
+        squareness = get_squareness(chessman_dic, channel_size, chessman_id, state, x, y, player_id)
         chessman = {
             "id": chessman_id,
             "squareness": squareness
@@ -75,7 +75,7 @@ def load_model(arch, input_channel_num, num_classes, is_use_cuda, resume_path):
     if is_use_cuda:
         model = torch.nn.DataParallel(model).cuda()
 
-    assert os.path.isfile(resume_path), 'Error: no checkpoint directory found!'
+    assert os.path.isfile(resume_path), 'Error: no checkpoint ' + resume_path + ' directory found!'
     if is_use_cuda:
         checkpoint = torch.load(resume_path)
     else:
@@ -212,12 +212,12 @@ def battle_via_server(argv):
     s.close()
 
 
-def legal_check(chessboard_play_id, chessboard_chessman_id, chessman_id, state, x, y, chessman_dic, player_id=1):
+def legal_check(chessboard_player_id, chessboard_chessman_id, chessman_id, state, x, y, chessman_dic, player_id=1):
     chessman = chessman_dic[chessman_id][state]
     if x < 0 or y < 0 or x + chessman.shape[0] - 1 >= 20 or y + chessman.shape[1] - 1 >= 20:
         return False
-    foo = chessboard_play_id == player_id
-    if np.sum(chessboard_chessman_id[foo]) == 0 and x == 0 and y == 0:
+    foo = chessboard_player_id == player_id
+    if np.sum(chessboard_player_id[foo]) == 0 and x == 0 and y == 0 and chessman[0][0] != 0:
         return True
 
     bar = chessboard_chessman_id == chessman_id
@@ -227,21 +227,24 @@ def legal_check(chessboard_play_id, chessboard_chessman_id, chessman_id, state, 
     for i in range(chessman.shape[0]):
         for j in range(chessman.shape[1]):
             if chessman[i][j] != 0:
-                if chessboard_play_id[x + i][y + j] != 0:
+                if chessboard_player_id[x + i][y + j] != 0:
                     return False
-                if chessboard_play_id[x + i + 1][y + j] == player_id or \
-                                chessboard_play_id[x + i - 1][y + j] == player_id or \
-                                chessboard_play_id[x + i][y + j + 1] == player_id or \
-                                chessboard_play_id[x + i][y + j - 1] == player_id:
+                if ((x + i + 1 <= 19 and chessboard_player_id[x + i + 1][y + j] == player_id) or
+                        (x + i - 1 >= 0 and chessboard_player_id[x + i - 1][y + j] == player_id) or
+                        (y + j + 1 <= 19 and chessboard_player_id[x + i][y + j + 1] == player_id) or
+                        (y + j - 1 >= 0 and chessboard_player_id[x + i][y + j - 1] == player_id)):
                     return False
 
     for i in range(chessman.shape[0]):
         for j in range(chessman.shape[1]):
             if chessman[i][j] != 0:
-                if chessboard_play_id[x + i + 1][y + j + 1] == player_id or \
-                                chessboard_play_id[x + i - 1][y + j + 1] == player_id or \
-                                chessboard_play_id[x + i + 1][y + j - 1] == player_id or \
-                                chessboard_play_id[x + i - 1][y + j - 1] == player_id:
+                if ((x + i + 1 <= 19 and y + j + 1 <= 19 and chessboard_player_id[x + i + 1][y + j + 1] == player_id) or
+                        (x + i - 1 >= 0 and y + j + 1 <= 19 and chessboard_player_id[x + i - 1][
+                                    y + j + 1] == player_id) or
+                        (x + i + 1 <= 19 and y + j - 1 >= 0 and chessboard_player_id[x + i + 1][
+                                    y + j - 1] == player_id) or
+                        (x + i - 1 >= 0 and y + j - 1 >= 0 and chessboard_player_id[x + i - 1][
+                                    y + j - 1] == player_id)):
                     return True
     return False
 
@@ -255,10 +258,10 @@ def class2chessman(class_id, index2chessman, channel_size=20):
     return chessman_id, state, x, y
 
 
-def legal_accuracy(inputs, ouputs, maxk=1, player_id=1):
+def legal_accuracy(inputs, outputs, maxk=1, player_id=1):
     chessman_dic = extend_all_chessman()
     _, chessman_state_id_inverse = get_chessman_state_index(chessman_dic)
-    _, pred_class_id_batch = ouputs.topk(maxk, 1, True, True)
+    _, pred_class_id_batch = outputs.topk(maxk, 1, True, True)
 
     legal_num = [0] * maxk
     all_num = 0
@@ -279,14 +282,14 @@ def legal_accuracy(inputs, ouputs, maxk=1, player_id=1):
         is_topk_exit_legal = False
         for k, class_id in enumerate(pred_class_id):
             chessman_id, state, x, y = class2chessman(class_id, chessman_state_id_inverse)
-            if legal_check(chessboard_player_id, chessboard_chessman_id, chessman_state_id_inverse, state, x, y,
+            if legal_check(chessboard_player_id, chessboard_chessman_id, chessman_id, state, x, y,
                            chessman_dic, player_id):
                 legal_num[k] += 1
                 hand_no_legal_num[hand_no] += 1
                 is_topk_exit_legal = True
 
         all_num += 1
-        hand_no_legal_num[hand_no] += 1
+        hand_no_all_num[hand_no] += 1
         if is_topk_exit_legal:
             topk_exit_legal_num += 1
 
@@ -298,7 +301,7 @@ def legal_accuracy(inputs, ouputs, maxk=1, player_id=1):
 
 
 def get_legal_solution(input, output, chessman_dic, chessman_state_id_inverse, maxk=10, player_id=1,
-                       random_choose_rate=0.2):
+                       random_choose_rate=0.0):
     _, pred_class_id_batch = output.topk(maxk, 1, True, True)
 
     pred_class_id = pred_class_id_batch[0, :]
@@ -313,7 +316,7 @@ def get_legal_solution(input, output, chessman_dic, chessman_state_id_inverse, m
     legal_solution = []
     for k, class_id in enumerate(pred_class_id):
         chessman_id, state, x, y = class2chessman(class_id, chessman_state_id_inverse)
-        if legal_check(chessboard_player_id, chessboard_chessman_id, chessman_state_id_inverse, state, x, y,
+        if legal_check(chessboard_player_id, chessboard_chessman_id, chessman_id, state, x, y,
                        chessman_dic, player_id):
             if not is_random_choose:
                 return chessman_id, state, x, y
